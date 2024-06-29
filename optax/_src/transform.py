@@ -164,8 +164,9 @@ def scale_by_stddev(
 
 class ScaleByAdamState(NamedTuple):
   """State for the Adam algorithm."""
+
   count: chex.Array  # shape=(), dtype=jnp.int32.
-  mu: base.Updates
+  mu: Optional[base.Updates]  # Will be None when use_first_moment is False.
   nu: base.Updates
 
 
@@ -176,7 +177,8 @@ def scale_by_adam(
     eps_root: float = 0.0,
     mu_dtype: Optional[chex.ArrayDType] = None,
     *,
-    nesterov: bool = False
+    nesterov: bool = False,
+    use_first_moment: bool = True
 ) -> base.GradientTransformation:
   """Rescale updates according to the Adam algorithm.
 
@@ -203,6 +205,9 @@ def scale_by_adam(
       `None` then the `dtype` is inferred from `params` and `updates`.
     nesterov: Whether to use Nesterov momentum. The variant of Adam with
       Nesterov momentum is described in [Dozat 2016]
+    use_first_moment: Whether to use an exponential moving average of the
+      grads at all. Setting this to `False` is equivalent to setting `b1 = 0`,
+      but faster and uses less memory.
 
   Returns:
     A `GradientTransformation` object.
@@ -210,31 +215,45 @@ def scale_by_adam(
 
   mu_dtype = utils.canonicalize_dtype(mu_dtype)
 
+  # We could test whether b1 = 0 rather than using a boolean param, but that's
+  # not traceable sadly.
+
   def init_fn(params):
-    mu = otu.tree_zeros_like(params, dtype=mu_dtype)  # First moment
+    # Only initialize mu if we're using the first moment.
+    if use_first_moment:
+      mu = otu.tree_zeros_like(params, dtype=mu_dtype)  # First moment
+    else:
+      mu = None
     nu = otu.tree_zeros_like(params)  # Second moment
     return ScaleByAdamState(count=jnp.zeros([], jnp.int32), mu=mu, nu=nu)
 
   def update_fn(updates, state, params=None):
     del params
-    mu = otu.tree_update_moment(updates, state.mu, b1, 1)
-    nu = otu.tree_update_moment_per_elem_norm(updates, state.nu, b2, 2)
     count_inc = numerics.safe_int32_increment(state.count)
-    if nesterov:
-      mu_hat = jtu.tree_map(
+    if use_first_moment:
+      # Standard Adam update with first moment
+      mu = otu.tree_update_moment(updates, state.mu, b1, 1)
+      if nesterov:
+        mu_hat = jtu.tree_map(
           lambda m, g: b1 * m + (1 - b1) * g,
           otu.tree_bias_correction(
               mu, b1, numerics.safe_int32_increment(count_inc)),
           otu.tree_bias_correction(updates, b1, count_inc))
+      else:
+        mu_hat = otu.tree_bias_correction(mu, b1, count_inc)
+      mu = otu.tree_cast(mu, mu_dtype)
     else:
-      mu_hat = otu.tree_bias_correction(mu, b1, count_inc)
+      # Simplified update when b1 = 0: use raw updates as mu_hat
+      mu_hat = updates
+      mu = None  # Keep mu as None to maintain consistent state structure
+
+    nu = otu.tree_update_moment_per_elem_norm(updates, state.nu, b2, 2)
     # Dozat 2016 https://openreview.net/pdf?id=OM0jvwB8jIp57ZJjtNEZ
     # Algorithm 2 further multiplies Adam's standard nu_hat by b2. It is
     # unclear why. Other Nadam implementations also omit the extra b2 factor.
     nu_hat = otu.tree_bias_correction(nu, b2, count_inc)
     updates = jtu.tree_map(
         lambda m, v: m / (jnp.sqrt(v + eps_root) + eps), mu_hat, nu_hat)
-    mu = otu.tree_cast(mu, mu_dtype)
     return updates, ScaleByAdamState(count=count_inc, mu=mu, nu=nu)
 
   return base.GradientTransformation(init_fn, update_fn)

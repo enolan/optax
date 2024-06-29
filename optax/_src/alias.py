@@ -341,7 +341,8 @@ def adam(
     eps_root: float = 0.0,
     mu_dtype: Optional[Any] = None,
     *,
-    nesterov: bool = False
+    nesterov: bool = False,
+    use_first_moment: bool = True,
 ) -> base.GradientTransformation:
   r"""The Adam optimizer.
 
@@ -432,6 +433,10 @@ def adam(
     nesterov: Whether to use Nesterov momentum. The solver with
       nesterov=True is equivalent to the :func:`optax.nadam` optimizer, and
       described in [Dozat 2016].
+    use_first_moment: Whether to use an exponential moving average of the
+      grads at all. Setting this to `False` is equivalent to setting `b1 = 0`,
+      but faster and uses less memory.
+
 
   Returns:
     The corresponding `GradientTransformation`.
@@ -446,6 +451,7 @@ def adam(
           eps_root=eps_root,
           mu_dtype=mu_dtype,
           nesterov=nesterov,
+          use_first_moment=use_first_moment,
       ),
       transform.scale_by_learning_rate(learning_rate),
   )
@@ -530,6 +536,7 @@ def adamw(
     mask: Optional[Union[Any, Callable[[base.Params], Any]]] = None,
     *,
     nesterov: bool = False,
+    use_first_moment: bool = True,
 ) -> base.GradientTransformation:
   r"""Adam with weight decay regularization.
 
@@ -629,6 +636,9 @@ def adamw(
     nesterov: Whether to use Nesterov momentum. The solver with
       nesterov=True is equivalent to the :func:`optax.nadamw` optimizer. This
       modification is described in [Dozat 2016].
+    use_first_moment: Whether to use an exponential moving average of the
+      grads at all. Setting this to `False` is equivalent to setting `b1 = 0`,
+      but faster and uses less memory.
 
   Returns:
     The corresponding `GradientTransformation`.
@@ -643,6 +653,7 @@ def adamw(
           eps_root=eps_root,
           mu_dtype=mu_dtype,
           nesterov=nesterov,
+          use_first_moment=use_first_moment,
       ),
       transform.add_decayed_weights(weight_decay, mask),
       transform.scale_by_learning_rate(learning_rate),
@@ -990,6 +1001,7 @@ def lamb(
     eps_root: float = 0.0,
     weight_decay: float = 0.,
     mask: MaskOrFn = None,
+    use_first_moment: bool = True,
 ) -> base.GradientTransformation:
   """The LAMB optimizer.
 
@@ -1038,12 +1050,21 @@ def lamb(
       or a Callable that returns such a pytree given the params/updates.
       The leaves should be booleans, `True` for leaves/subtrees you want to
       apply the transformation to, and `False` for those you want to skip.
+    use_first_moment: Whether to use an exponential moving average of the
+      grads at all. Setting this to `False` is equivalent to setting `b1 = 0`,
+      but faster and uses less memory.
 
   Returns:
     The corresponding `GradientTransformation`.
   """
   return combine.chain(
-      transform.scale_by_adam(b1=b1, b2=b2, eps=eps, eps_root=eps_root),
+      transform.scale_by_adam(
+          b1=b1,
+          b2=b2,
+          eps=eps,
+          eps_root=eps_root,
+          use_first_moment=use_first_moment
+      ),
       transform.add_decayed_weights(weight_decay=weight_decay, mask=mask),
       transform.scale_by_trust_ratio(),
       transform.scale_by_learning_rate(learning_rate),

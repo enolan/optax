@@ -185,6 +185,84 @@ class TransformTest(parameterized.TestCase):
     print(grad, value, updates)
     self.assertLess(objective(init_params - updates), tol)
 
+  def test_scale_by_adam_no_first_moment(self):
+    """Test that setting use_first_moment=False is equivalent to beta1=0 in
+    `scale_by_adam`."""
+    def f(params: jnp.ndarray) -> jnp.ndarray:
+      return params ** 2
+    f_prime = jax.grad(f)
+
+    initial_params = jnp.array(10.0)
+
+    baseline = transform.scale_by_adam(b1=0.0, use_first_moment=True)
+    no_first_moment = transform.scale_by_adam(b1=0.0, use_first_moment=False)
+    # b1 should be ignored when use_first_moment=False
+    no_first_moment_b1_nonzero = transform.scale_by_adam(
+        b1=0.9, use_first_moment=False)
+
+    baseline_state = baseline.init(initial_params)
+    no_first_moment_state = no_first_moment.init(initial_params)
+    no_first_moment_b1_nonzero_state = no_first_moment_b1_nonzero.init(
+        initial_params)
+    assert baseline_state.mu is not None
+    assert no_first_moment_state.mu is None
+    assert no_first_moment_b1_nonzero_state.mu is None
+
+    baseline_params = initial_params
+    no_first_moment_params = initial_params
+    no_first_moment_b1_nonzero_params = initial_params
+
+    for _ in range(STEPS):
+      baseline_grad = f_prime(baseline_params)
+      baseline_updates, baseline_state = baseline.update(
+          baseline_grad, baseline_state, self.init_params)
+      baseline_params = update.apply_updates(baseline_params, baseline_updates)
+
+      no_first_moment_grad = f_prime(no_first_moment_params)
+      no_first_moment_updates, no_first_moment_state = no_first_moment.update(
+          no_first_moment_grad, no_first_moment_state, self.init_params)
+      no_first_moment_params = update.apply_updates(
+          no_first_moment_params, no_first_moment_updates)
+
+      no_first_moment_b1_nonzero_grad = f_prime(
+        no_first_moment_b1_nonzero_params)
+      no_first_moment_b1_nonzero_updates, no_first_moment_b1_nonzero_state = (
+          no_first_moment_b1_nonzero.update(
+              no_first_moment_b1_nonzero_grad, no_first_moment_b1_nonzero_state,
+              self.init_params))
+      no_first_moment_b1_nonzero_params = update.apply_updates(
+          no_first_moment_b1_nonzero_params,
+          no_first_moment_b1_nonzero_updates
+      )
+
+      # baseline and the two no_first_moment variants should be equivalent up
+      # to floating point error, and the no_first_moment variants should be
+      # exactly equal.
+      chex.assert_trees_all_close(baseline_updates, no_first_moment_updates)
+      chex.assert_trees_all_close(
+          baseline_updates,
+          no_first_moment_b1_nonzero_updates
+      )
+
+      chex.assert_trees_all_equal(
+          no_first_moment_updates,
+          no_first_moment_b1_nonzero_updates
+      )
+      chex.assert_trees_all_equal(
+          no_first_moment_state,
+          no_first_moment_b1_nonzero_state
+      )
+
+    chex.assert_trees_all_close(baseline_params, no_first_moment_params)
+    chex.assert_trees_all_close(
+        baseline_params,
+        no_first_moment_b1_nonzero_params
+    )
+
+    chex.assert_trees_all_equal(
+        no_first_moment_params,
+        no_first_moment_b1_nonzero_params
+    )
 
 if __name__ == '__main__':
   absltest.main()

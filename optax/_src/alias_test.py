@@ -53,6 +53,10 @@ _OPTIMIZERS_UNDER_TEST = (
     dict(opt_name='adafactor', opt_kwargs=dict(learning_rate=5e-3)),
     dict(opt_name='adagrad', opt_kwargs=dict(learning_rate=1.0)),
     dict(opt_name='adam', opt_kwargs=dict(learning_rate=1e-1)),
+    dict(
+        opt_name='adam',
+        opt_kwargs=dict(learning_rate=1e-2, use_first_moment=False)
+    ),
     dict(opt_name='adamw', opt_kwargs=dict(learning_rate=1e-1)),
     dict(opt_name='adamax', opt_kwargs=dict(learning_rate=1e-1)),
     dict(opt_name='adamaxw', opt_kwargs=dict(learning_rate=1e-1)),
