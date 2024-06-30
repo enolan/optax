@@ -114,7 +114,9 @@ def schedule_free(
   base_optimizer = base.with_extra_args_support(base_optimizer)
 
   def init_fn(params: base.Params) -> ScheduleFreeState:
-    z = jax.tree_util.tree_map(lambda t: t.astype(state_dtype), params)
+    # copy is necessary to ensure you can donate both the optimizer state and
+    # the params on the first training step - they can't be the same buffer.
+    z = jax.tree_util.tree_map(lambda t: t.copy().astype(state_dtype), params)
     return ScheduleFreeState(
         b1=jnp.array([b1], dtype=jnp.float32),
         weight_sum=jnp.zeros([], dtype=jnp.float32),
