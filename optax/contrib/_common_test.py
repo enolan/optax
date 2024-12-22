@@ -56,6 +56,10 @@ _MAIN_OPTIMIZERS_UNDER_TEST = [
         opt_kwargs=dict(learning_rate=1e-2, warmup_steps=5000),
     ),
     dict(
+        opt_name='soap',
+        opt_kwargs=dict(learning_rate=1e-2),
+    ),
+    dict(
         opt_name='sophia',
         opt_kwargs=dict(learning_rate=1e-2),
     ),
@@ -259,7 +263,7 @@ class ContribTest(chex.TestCase):
     # Add here the hyperparameters that cannot be injected with
     # inject_hyperparams.
     static_args = []
-    for uninjectable_hparam in ['warmup_steps', 'num_betas']:
+    for uninjectable_hparam in ['warmup_steps', 'num_betas', 'precon_update_freq']:
       if uninjectable_hparam in inspect.signature(factory).parameters.keys():
         static_args.append(uninjectable_hparam)
     static_args = tuple(static_args)
