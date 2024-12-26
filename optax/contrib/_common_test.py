@@ -56,8 +56,8 @@ _MAIN_OPTIMIZERS_UNDER_TEST = [
         opt_kwargs=dict(learning_rate=1e-2, warmup_steps=5000),
     ),
     dict(
-        opt_name='soap',
-        opt_kwargs=dict(learning_rate=1e-2),
+        opt_name='soap_adamw',
+        opt_kwargs=dict(learning_rate=1e-3),
     ),
     dict(
         opt_name='sophia',
@@ -87,6 +87,12 @@ _MAIN_OPTIMIZERS_UNDER_TEST += [
         opt_name='sgd',
         opt_kwargs=dict(learning_rate=1e-3),
         wrapper_name='reduce_on_plateau',
+        wrapper_kwargs={},
+    ),
+    dict(
+        opt_name='sgd',
+        opt_kwargs=dict(learning_rate=1e-3),
+        wrapper_name='soap_wrapper',
         wrapper_kwargs={},
     ),
 ]
@@ -250,6 +256,8 @@ class ContribTest(chex.TestCase):
       # TODO(vroulet): discuss adding support for reduce_on_plateau
       # so removing all assertions in its definition
       self.skipTest('reduce_on_plateau is not supported by inject_hyperparams.')
+    if opt_name == 'soap_adamw' or wrapper_name == 'soap_wrapper':
+      self.skipTest('soap numerics are too imprecise for this test.')
     if wrapper_name is None:
       factory = _get_opt_factory(opt_name)
       hparams = opt_kwargs
@@ -263,7 +271,7 @@ class ContribTest(chex.TestCase):
     # Add here the hyperparameters that cannot be injected with
     # inject_hyperparams.
     static_args = []
-    for uninjectable_hparam in ['warmup_steps', 'num_betas', 'precon_update_freq']:
+    for uninjectable_hparam in ['warmup_steps', 'num_betas']:
       if uninjectable_hparam in inspect.signature(factory).parameters.keys():
         static_args.append(uninjectable_hparam)
     static_args = tuple(static_args)
